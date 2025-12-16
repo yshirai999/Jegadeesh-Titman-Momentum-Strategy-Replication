@@ -3,4 +3,243 @@ Main execution script for Jegadeesh & Titman (1993) momentum strategy replicatio
 Runs the complete analysis and generates results tables matching the original paper.
 """
 
-import pandas as pd\nimport numpy as np\nimport logging\nimport sys\nfrom datetime import datetime\nfrom pathlib import Path\n\n# Add current directory to path for imports\nsys.path.append('.')\n\nimport config\nfrom momentum_strategy import MomentumStrategy\nfrom results_generator import ResultsGenerator\nfrom plotting import MomentumPlotter\nfrom utils import setup_logging, ensure_directory_exists\n\n# Set up logging\nlogger = setup_logging(config.LOG_FILE, config.LOGGING_LEVEL)\n\ndef main():\n    \"\"\"\n    Main function to run complete Jegadeesh & Titman (1993) momentum strategy replication.\n    \"\"\"\n    logger.info(\"Starting Jegadeesh & Titman (1993) momentum strategy replication\")\n    logger.info(\"=\" * 80)\n    \n    try:\n        # Create output directories\n        ensure_directory_exists(config.RESULTS_DIR)\n        ensure_directory_exists(config.FIGURES_DIR)\n        ensure_directory_exists(config.DATA_DIR)\n        \n        print(\"\\n\" + \"=\" * 80)\n        print(\"JEGADEESH & TITMAN (1993) MOMENTUM STRATEGY REPLICATION\")\n        print(\"=\" * 80)\n        print(f\"Sample Period: {config.START_DATE.strftime('%Y-%m-%d')} to {config.END_DATE.strftime('%Y-%m-%d')}\")\n        print(f\"Formation Periods (J): {config.FORMATION_PERIODS} months\")\n        print(f\"Holding Periods (K): {config.HOLDING_PERIODS} months\")\n        print(f\"Portfolio Weighting: {config.PORTFOLIO_WEIGHTING.title()}\")\n        print(f\"Number of Portfolios: {config.NUM_PORTFOLIOS}\")\n        print(f\"Skip Period: {config.SKIP_PERIOD} month(s)\")\n        \n        # Step 1: Initialize and run momentum strategy\n        print(\"\\n[1/5] Running momentum strategy analysis...\")\n        strategy = MomentumStrategy(\n            formation_periods=config.FORMATION_PERIODS,\n            holding_periods=config.HOLDING_PERIODS,\n            num_portfolios=config.NUM_PORTFOLIOS,\n            weighting_scheme=config.PORTFOLIO_WEIGHTING\n        )\n        \n        # Run full analysis\n        results = strategy.run_full_analysis(\n            data_source=config.DATA_SOURCE,\n            validate_data=True\n        )\n        \n        # Display basic results\n        data_summary = results.get('data_summary', {})\n        print(f\"  ✓ Loaded {data_summary.get('total_observations', 'N/A'):,} observations\")\n        print(f\"  ✓ Analyzed {data_summary.get('unique_stocks', 'N/A'):,} unique stocks\")\n        print(f\"  ✓ Calculated returns for {len(strategy.strategy_returns)} (J,K) combinations\")\n        \n        # Step 2: Generate results tables\n        print(\"\\n[2/5] Generating results tables...\")\n        results_generator = ResultsGenerator(strategy)\n        \n        # Generate main results tables\n        tables = results_generator.generate_all_tables()\n        \n        # Save tables\n        results_generator.save_tables(tables)\n        print(f\"  ✓ Generated {len(tables)} results tables\")\n        \n        # Step 3: Create visualizations\n        print(\"\\n[3/5] Creating visualizations...\")\n        plotter = MomentumPlotter(strategy)\n        \n        # Generate plots\n        plots_created = plotter.create_all_plots()\n        print(f\"  ✓ Created {plots_created} plots and charts\")\n        \n        # Step 4: Display key results\n        print(\"\\n[4/5] Displaying key results...\")\n        display_key_results(strategy, tables)\n        \n        # Step 5: Save comprehensive results\n        print(\"\\n[5/5] Saving comprehensive results...\")\n        strategy.save_results()\n        \n        # Create summary report\n        create_summary_report(strategy, tables)\n        \n        print(\"\\n\" + \"=\" * 80)\n        print(\"ANALYSIS COMPLETED SUCCESSFULLY!\")\n        print(\"=\" * 80)\n        print(f\"Results saved to: {Path(config.RESULTS_DIR).absolute()}\")\n        print(f\"Figures saved to: {Path(config.FIGURES_DIR).absolute()}\")\n        print(f\"Log file: {config.LOG_FILE}\")\n        \n        logger.info(\"Momentum strategy replication completed successfully\")\n        \n    except Exception as e:\n        logger.error(f\"Error in main execution: {e}\", exc_info=True)\n        print(f\"\\n❌ Error: {e}\")\n        print(\"Check the log file for detailed error information.\")\n        raise\n\ndef display_key_results(strategy: MomentumStrategy, tables: dict):\n    \"\"\"\n    Display key results from the momentum strategy analysis.\n    \n    Parameters:\n    -----------\n    strategy : MomentumStrategy\n        Completed momentum strategy analysis\n    tables : dict\n        Generated results tables\n    \"\"\"\n    \n    # Display winner-loser spreads\n    if 'winner_loser_spreads' in tables:\n        spreads_table = tables['winner_loser_spreads']\n        print(\"\\n  Winner-Loser Portfolio Spreads:\")\n        print(\"  \" + \"-\" * 50)\n        \n        for _, row in spreads_table.iterrows():\n            j, k = row['Formation'], row['Holding']\n            mean_ret = row['Mean Return (%)']\n            t_stat = row['t-statistic']\n            significance = \"***\" if abs(t_stat) > 2.576 else \"**\" if abs(t_stat) > 1.96 else \"*\" if abs(t_stat) > 1.645 else \"\"\n            \n            print(f\"  ({j:2d},{k:2d}): {mean_ret:6.2f}% (t={t_stat:5.2f}){significance}\")\n    \n    # Display portfolio performance summary\n    if hasattr(strategy, 'strategy_returns') and strategy.strategy_returns:\n        print(\"\\n  Portfolio Performance Summary:\")\n        print(\"  \" + \"-\" * 50)\n        \n        for (j, k), returns_data in list(strategy.strategy_returns.items())[:3]:  # Show first 3\n            if not returns_data.empty:\n                performance = strategy.returns_calculator.calculate_performance_metrics(returns_data)\n                \n                if 'long_short' in performance:\n                    ls_metrics = performance['long_short']\n                    ann_ret = ls_metrics.get('annualized_return', np.nan) * 100\n                    ann_vol = ls_metrics.get('annualized_volatility', np.nan) * 100\n                    sharpe = ls_metrics.get('sharpe_ratio', np.nan)\n                    \n                    print(f\"  ({j},{k}) Long-Short: {ann_ret:6.2f}% return, {ann_vol:5.2f}% vol, {sharpe:5.2f} Sharpe\")\n    \n    # Display data quality summary\n    if hasattr(strategy, 'data_validator') and strategy.data_validator:\n        validation_results = strategy.data_validator.validation_results\n        quality_score = validation_results.get('data_quality_score', 0)\n        warnings_count = len(validation_results.get('warnings', []))\n        errors_count = len(validation_results.get('errors', []))\n        \n        print(f\"\\n  Data Quality Summary:\")\n        print(f\"  \" + \"-\" * 50)\n        print(f\"  Quality Score: {quality_score:.1f}/100\")\n        print(f\"  Warnings: {warnings_count}, Errors: {errors_count}\")\n\ndef create_summary_report(strategy: MomentumStrategy, tables: dict):\n    \"\"\"\n    Create a comprehensive summary report.\n    \n    Parameters:\n    -----------\n    strategy : MomentumStrategy\n        Completed momentum strategy analysis\n    tables : dict\n        Generated results tables\n    \"\"\"\n    report_path = Path(config.RESULTS_DIR) / \"summary_report.txt\"\n    \n    with open(report_path, 'w') as f:\n        f.write(\"JEGADEESH & TITMAN (1993) MOMENTUM STRATEGY REPLICATION\\n\")\n        f.write(\"=\" * 65 + \"\\n\\n\")\n        \n        # Analysis parameters\n        f.write(\"ANALYSIS PARAMETERS\\n\")\n        f.write(\"-\" * 20 + \"\\n\")\n        f.write(f\"Sample Period: {config.START_DATE} to {config.END_DATE}\\n\")\n        f.write(f\"Formation Periods: {config.FORMATION_PERIODS} months\\n\")\n        f.write(f\"Holding Periods: {config.HOLDING_PERIODS} months\\n\")\n        f.write(f\"Portfolio Weighting: {config.PORTFOLIO_WEIGHTING}\\n\")\n        f.write(f\"Number of Portfolios: {config.NUM_PORTFOLIOS}\\n\")\n        f.write(f\"Skip Period: {config.SKIP_PERIOD} month(s)\\n\")\n        f.write(f\"Data Source: {config.DATA_SOURCE}\\n\\n\")\n        \n        # Data summary\n        data_summary = strategy.results.get('data_summary', {})\n        f.write(\"DATA SUMMARY\\n\")\n        f.write(\"-\" * 12 + \"\\n\")\n        f.write(f\"Total Observations: {data_summary.get('total_observations', 'N/A'):,}\\n\")\n        f.write(f\"Unique Stocks: {data_summary.get('unique_stocks', 'N/A'):,}\\n\")\n        f.write(f\"Monthly Observations: {data_summary.get('monthly_observations', 'N/A'):,}\\n\")\n        f.write(f\"Average Stocks per Month: {data_summary.get('avg_stocks_per_month', 0):.1f}\\n\\n\")\n        \n        # Key findings\n        f.write(\"KEY FINDINGS\\n\")\n        f.write(\"-\" * 12 + \"\\n\")\n        \n        if 'winner_loser_spreads' in tables:\n            spreads_table = tables['winner_loser_spreads']\n            \n            # Find best performing strategy\n            best_strategy = spreads_table.loc[spreads_table['Mean Return (%)'].idxmax()]\n            f.write(f\"Best Strategy: ({best_strategy['Formation']},{best_strategy['Holding']}) \")\n            f.write(f\"with {best_strategy['Mean Return (%)']:.2f}% monthly return\\n\")\n            \n            # Count significant strategies\n            significant_strategies = (spreads_table['t-statistic'].abs() > 1.96).sum()\n            f.write(f\"Statistically Significant Strategies (5% level): {significant_strategies}/{len(spreads_table)}\\n\")\n            \n            # Average momentum profit\n            avg_momentum = spreads_table['Mean Return (%)'].mean()\n            f.write(f\"Average Momentum Profit: {avg_momentum:.2f}% per month\\n\\n\")\n        \n        # Generated files\n        f.write(\"GENERATED FILES\\n\")\n        f.write(\"-\" * 15 + \"\\n\")\n        \n        results_dir = Path(config.RESULTS_DIR)\n        figures_dir = Path(config.FIGURES_DIR)\n        \n        # List CSV files\n        csv_files = list(results_dir.glob(\"*.csv\"))\n        f.write(f\"Results Tables ({len(csv_files)} files):\\n\")\n        for file in sorted(csv_files):\n            f.write(f\"  - {file.name}\\n\")\n        \n        # List figure files\n        fig_files = list(figures_dir.glob(\"*.png\")) + list(figures_dir.glob(\"*.pdf\"))\n        f.write(f\"\\nFigures ({len(fig_files)} files):\\n\")\n        for file in sorted(fig_files):\n            f.write(f\"  - {file.name}\\n\")\n        \n        f.write(f\"\\nAnalysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n\")\n    \n    print(f\"  ✓ Summary report saved to: {report_path}\")\n\nif __name__ == \"__main__\":\n    main()
+import pandas as pd
+import numpy as np
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# Add current directory to path for imports
+sys.path.append('.')
+
+import config
+from momentum_strategy import MomentumStrategy
+from results_generator import ResultsGenerator
+from plotting import MomentumPlotter
+from utils import setup_logging, ensure_directory_exists
+
+# Set up logging
+logger = setup_logging(config.LOG_FILE, config.LOGGING_LEVEL)
+
+
+def main():
+    """
+    Main function to run complete Jegadeesh & Titman (1993) momentum strategy replication.
+    """
+    logger.info("Starting Jegadeesh & Titman (1993) momentum strategy replication")
+    logger.info("=" * 80)
+    try:
+        # Create output directories
+        ensure_directory_exists(config.RESULTS_DIR)
+        ensure_directory_exists(config.FIGURES_DIR)
+        ensure_directory_exists(config.DATA_DIR)
+        
+        print("\n" + "=" * 80)
+        print("JEGADEESH & TITMAN (1993) MOMENTUM STRATEGY REPLICATION")
+        print("=" * 80)
+        print(f"Sample Period: {config.START_DATE.strftime('%Y-%m-%d')} to {config.END_DATE.strftime('%Y-%m-%d')}")
+        print(f"Formation Periods (J): {config.FORMATION_PERIODS} months")
+        print(f"Holding Periods (K): {config.HOLDING_PERIODS} months")
+        print(f"Portfolio Weighting: {config.PORTFOLIO_WEIGHTING.title()}")
+        print(f"Number of Portfolios: {config.NUM_PORTFOLIOS}")
+        print(f"Skip Period: {config.SKIP_PERIOD} month(s)")
+        
+        # Step 1: Initialize and run momentum strategy
+        print("[1/5] Running momentum strategy analysis...")
+        strategy = MomentumStrategy(
+            formation_periods=config.FORMATION_PERIODS,
+            holding_periods=config.HOLDING_PERIODS,
+            num_portfolios=config.NUM_PORTFOLIOS,
+            weighting_scheme=config.PORTFOLIO_WEIGHTING
+        )
+        
+        # Run full analysis
+        results = strategy.run_full_analysis(
+            data_source=config.DATA_SOURCE,
+            validate_data=True
+        )
+        
+        # Display basic results
+        data_summary = results.get('data_summary', {})
+        print(f"  ✓ Loaded {data_summary.get('total_observations', 'N/A'):,} observations")
+        print(f"  ✓ Analyzed {data_summary.get('unique_stocks', 'N/A'):,} unique stocks")
+        print(f"  ✓ Calculated returns for {len(strategy.strategy_returns)} (J,K) combinations")
+        
+        # Step 2: Generate results tables
+        print("[2/5] Generating results tables...")
+        results_generator = ResultsGenerator(strategy)        
+        
+        # Generate main results tables
+        tables = results_generator.generate_all_tables()
+        
+        # Save tables
+        results_generator.save_tables(tables)
+        print(f"  ✓ Generated {len(tables)} results tables")
+        
+        # Step 3: Create visualizations
+        print("[3/5] Creating visualizations...")
+        plotter = MomentumPlotter(strategy)
+        
+        # Generate plots
+        plots_created = plotter.create_all_plots()
+        print(f"  ✓ Created {plots_created} plots and charts")
+        
+        # Step 4: Display key results
+        print("[4/5] Displaying key results...")
+        display_key_results(strategy, tables)
+        
+        # Step 5: Save comprehensive results
+        print("[5/5] Saving comprehensive results...")
+        strategy.save_results()
+        
+        # Create summary report
+        create_summary_report(strategy, tables)
+        
+        print("\n" + "=" * 80)
+        print("ANALYSIS COMPLETED SUCCESSFULLY!")
+        print("=" * 80)
+        print(f"Results saved to: {Path(config.RESULTS_DIR).absolute()}")
+        print(f"Figures saved to: {Path(config.FIGURES_DIR).absolute()}")
+        print(f"Log file: {config.LOG_FILE}")
+        logger.info("Momentum strategy replication completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in main execution: {e}", exc_info=True)
+        print(f"\n❌ Error: {e}")
+        print("Check the log file for detailed error information.")
+        raise
+
+
+
+def display_key_results(strategy: MomentumStrategy, tables: dict):
+    """
+    Display key results from the momentum strategy analysis.
+    
+    Parameters:
+    -----------
+    strategy : MomentumStrategy
+        Completed momentum strategy analysis
+    tables : dict
+        Generated results tables
+    """
+    # Display winner-loser spreads
+    if 'winner_loser_spreads' in tables:
+        spreads_table = tables['winner_loser_spreads']
+        print("\n  Winner-Loser Portfolio Spreads:")
+        print("  " + "-" * 50)
+        for _, row in spreads_table.iterrows():
+            j, k = row['Formation'], row['Holding']
+            mean_ret = row['Mean Return (%)']
+            t_stat = row['t-statistic']
+            significance = "***" if abs(t_stat) > 2.576 else "**" if abs(t_stat) > 1.96 else "*" if abs(t_stat) > 1.645 else ""
+            print(f"  ({j:2d},{k:2d}): {mean_ret:6.2f}% (t={t_stat:5.2f}){significance}")
+    
+    # Display portfolio performance summary
+    if hasattr(strategy, 'strategy_returns') and strategy.strategy_returns:
+        print("\n  Portfolio Performance Summary:")
+        print("  " + "-" * 50)
+        for (j, k), returns_data in list(strategy.strategy_returns.items())[:3]:  
+            # Show first 3
+            if not returns_data.empty:
+                performance = strategy.returns_calculator.calculate_performance_metrics(returns_data)
+                if 'long_short' in performance:
+                    ls_metrics = performance['long_short']
+                    ann_ret = ls_metrics.get('annualized_return', np.nan) * 100
+                    ann_vol = ls_metrics.get('annualized_volatility', np.nan) * 100
+                    sharpe = ls_metrics.get('sharpe_ratio', np.nan)
+                    print(f"  ({j},{k}) Long-Short: {ann_ret:6.2f}% return, {ann_vol:5.2f}% vol, {sharpe:5.2f} Sharpe")
+    
+    # Display data quality summary
+    if hasattr(strategy, 'data_validator') and strategy.data_validator:
+        validation_results = strategy.data_validator.validation_results
+        quality_score = validation_results.get('data_quality_score', 0)
+        warnings_count = len(validation_results.get('warnings', []))
+        errors_count = len(validation_results.get('errors', []))
+        print(f"\n  Data Quality Summary:")
+        print(f"  " + "-" * 50)
+        print(f"  Quality Score: {quality_score:.1f}/100")
+        print(f"  Warnings: {warnings_count}, Errors: {errors_count}")
+
+
+def create_summary_report(strategy: MomentumStrategy, tables: dict):
+    """
+    Create a comprehensive summary report.
+    
+    Parameters:
+    -----------
+    strategy : MomentumStrategy
+        Completed momentum strategy analysis
+    tables : dict
+        Generated results tables
+    """
+    report_path = Path(config.RESULTS_DIR) / "summary_report.txt"
+    with open(report_path, 'w') as f:
+        f.write("JEGADEESH & TITMAN (1993) MOMENTUM STRATEGY REPLICATION\n")
+        f.write("=" * 65 + "\n\n")
+        
+        # Analysis parameters
+        f.write("ANALYSIS PARAMETERS\n")
+        f.write("-" * 20 + "\n")
+        f.write(f"Sample Period: {config.START_DATE} to {config.END_DATE}\n")
+        f.write(f"Formation Periods: {config.FORMATION_PERIODS} months\n")
+        f.write(f"Holding Periods: {config.HOLDING_PERIODS} months\n")
+        f.write(f"Portfolio Weighting: {config.PORTFOLIO_WEIGHTING}\n")
+        f.write(f"Number of Portfolios: {config.NUM_PORTFOLIOS}\n")
+        f.write(f"Skip Period: {config.SKIP_PERIOD} month(s)\n")
+        f.write(f"Data Source: {config.DATA_SOURCE}\n\n")
+        
+        # Data summary
+        data_summary = strategy.results.get('data_summary', {})
+        f.write("DATA SUMMARY\n")
+        f.write("-" * 12 + "\n")
+        f.write(f"Total Observations: {data_summary.get('total_observations', 'N/A'):,}\n")
+        f.write(f"Unique Stocks: {data_summary.get('unique_stocks', 'N/A'):,}\n")
+        f.write(f"Monthly Observations: {data_summary.get('monthly_observations', 'N/A'):,}\n")
+        f.write(f"Average Stocks per Month: {data_summary.get('avg_stocks_per_month', 0):.1f}\n\n")
+        
+        # Key findings
+        f.write("KEY FINDINGS\n")
+        f.write("-" * 12 + "\n")
+        
+        if 'winner_loser_spreads' in tables:
+            spreads_table = tables['winner_loser_spreads']
+            
+            # Find best performing strategy
+            best_strategy = spreads_table.loc[spreads_table['Mean Return (%)'].idxmax()]
+            f.write(f"Best Strategy: ({best_strategy['Formation']},{best_strategy['Holding']}) ")
+            f.write(f"with {best_strategy['Mean Return (%)']:.2f}% monthly return\n")
+            
+            # Count significant strategies
+            significant_strategies = (spreads_table['t-statistic'].abs() > 1.96).sum()
+            f.write(f"Statistically Significant Strategies (5% level): {significant_strategies}/{len(spreads_table)}\n")
+            
+            # Average momentum profit
+            avg_momentum = spreads_table['Mean Return (%)'].mean()
+            f.write(f"Average Momentum Profit: {avg_momentum:.2f}% per month\n\n")
+        
+        # Generated files
+        f.write("GENERATED FILES\n")
+        f.write("-" * 15 + "\n")
+        
+        results_dir = Path(config.RESULTS_DIR)
+        figures_dir = Path(config.FIGURES_DIR)
+        
+        # List CSV files
+        csv_files = list(results_dir.glob("*.csv"))
+        f.write(f"Results Tables ({len(csv_files)} files):\n")
+        for file in sorted(csv_files):
+            f.write(f"  - {file.name}\n")
+        
+        # List figure files
+        fig_files = list(figures_dir.glob("*.png")) + list(figures_dir.glob("*.pdf"))
+        f.write(f"\nFigures ({len(fig_files)} files):\n")
+        for file in sorted(fig_files):
+            f.write(f"  - {file.name}\n")
+        
+        f.write(f"\nAnalysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    print(f"  ✓ Summary report saved to: {report_path}")
+    
+    if __name__ == "__main__":
+        main()

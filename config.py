@@ -23,7 +23,12 @@ EXTENDED_END_DATE = datetime(1989, 12, 31)
 # Data source configuration
 DATA_SOURCE = "wrds"  # Options: "wrds", "yahoo", "local_csv"
 WRDS_USERNAME = config_wrds.WRDS_USERNAME  # Set your WRDS username
-WRDS_PASSWORD = config_wrds.WRDS_PASSWORD  # Set your WRDS password
+WRDS_PASSWORD = config_wrds.WRDS_PASSWORD  # Set your WRDS password (may not be used with Duo)
+
+# Note: If your institution uses Duo authentication:
+# - The password in config_wrds may not be used
+# - You'll be prompted interactively for Duo authentication
+# - Make sure Duo Mobile app is installed and working
 
 # =============================================================================
 # MOMENTUM STRATEGY PARAMETERS
