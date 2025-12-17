@@ -4,3 +4,6 @@ data/market_data.csv
 
 # WRDS configuration (contains credentials)
 data/config_wrds.py
+
+# Research papers (copyrighted material)
+Jegadeesh_Titman.pdf
