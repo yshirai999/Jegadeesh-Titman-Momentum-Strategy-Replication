@@ -102,10 +102,9 @@ python main.py
 ### 🔧 Data Sources
 
 - **WRDS/CRSP**: Academic research standard (requires subscription)
-- **Yahoo Finance**: Free alternative for testing
 - **Local CSV**: Custom data import capability
 
-### 📋 Publication-Ready Output
+### 📋 Output
 
 - **Table I Format**: Monthly returns matching original paper
 - **LaTeX Tables**: Academic publication formatting
@@ -132,7 +131,7 @@ Winner-Loser Spread         | 2.17***| 2.28***| 2.15***| 2.19***
 
 ```python
 # In config.py
-DATA_SOURCE = 'yahoo'  # 'wrds', 'yahoo', or 'csv'
+DATA_SOURCE = 'wrds'  # 'wrds' or 'csv'
 START_DATE = '1965-01-01'
 END_DATE = '1989-12-31'
 ```
@@ -188,7 +187,6 @@ After running the analysis:
 ### Data Sources
 
 - **WRDS Access**: Academic subscription required for CRSP data
-- **Yahoo Finance**: Free (yfinance package)
 - **Local Data**: CSV format with columns: date, ticker, price, return, market_cap
 
 ## Troubleshooting
@@ -208,7 +206,7 @@ After running the analysis:
 
 ## Citation
 
-If you use this code in academic research, please cite:
+This work is based on:
 
 ```bibtex
 @article{jegadeesh1993returns,
@@ -235,7 +233,3 @@ For questions or issues:
 2. Review data validation output from `data_validator.py`
 3. Enable debug logging: `LOGGING_LEVEL = 'DEBUG'` in config.py
 4. Examine intermediate results in `/results` directory
-
----
-
-**Note**: This implementation is designed for academic research and educational purposes. Ensure you have appropriate data access permissions before running with proprietary datasets.

@@ -21,7 +21,7 @@ EXTENDED_START_DATE = datetime(1963, 1, 1)  # Extra data for momentum calculatio
 EXTENDED_END_DATE = datetime(1989, 12, 31)
 
 # Data source configuration
-DATA_SOURCE = "wrds"  # Options: "wrds", "yahoo", "local_csv"
+DATA_SOURCE = "local_csv"  # Options: "wrds", "local_csv"
 WRDS_USERNAME = config_wrds.WRDS_USERNAME  # Set your WRDS username
 WRDS_PASSWORD = config_wrds.WRDS_PASSWORD  # Set your WRDS password (may not be used with Duo)
 
