@@ -129,8 +129,9 @@ def calculate_momentum_scores(returns_matrix: pd.DataFrame,
         
         formation_returns = returns_matrix.iloc[start_idx:end_idx]
         
-        # Calculate cumulative return: (1+r1)*(1+r2)*...*(1+rJ) - 1
-        momentum_scores.loc[current_date] = (1 + formation_returns).prod() - 1
+        # Calculate cumulative return: (1+r1)*(1+r2)*...*(1+rJ) - 1 and returns NaNs if any month is missing
+        momentum_scores.loc[current_date] = (1 + formation_returns).prod(axis=0, skipna=False) - 1
+
     
     print(f"✅ Momentum scores calculated for {momentum_scores.count().sum()} stock-month observations")
     
@@ -165,7 +166,8 @@ def create_momentum_portfolios(
     n_portfolios : int
         Number of portfolios (deciles by default).
     value_weighted : bool
-        If True, use market cap weights at formation. Otherwise equal-weight.
+        If True, use market cap weights at formation. 
+        Otherwise equal-weight (as in Jegadeesh and Titman 1993).
 
     Returns
     -------
@@ -379,7 +381,7 @@ def run_momentum_strategy(formation_period: int = 6,
     print(f"\nSTEP 4: Creating momentum portfolios...")
     portfolio_returns = create_momentum_portfolios(returns_matrix, momentum_scores, 
                                                    stock_data, holding_period,
-                                                    n_portfolios, True)
+                                                    n_portfolios, False)
     
     # Step 5: Summary statistics
     print(f"\nSTEP 5: Computing summary statistics...")
