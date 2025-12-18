@@ -264,8 +264,8 @@ def calculate_summary_statistics(returns: pd.DataFrame) -> pd.DataFrame:
         ret_series = returns[col].dropna()
         
         # Calculate statistics
-        mean_ret = ret_series.mean() * 12  # Annualized
-        volatility = ret_series.std() * np.sqrt(12)  # Annualized
+        mean_ret = ret_series.mean()
+        volatility = ret_series.std()
         sharpe = mean_ret / volatility if volatility > 0 else np.nan
         
         # Calculate t-statistic for mean return
