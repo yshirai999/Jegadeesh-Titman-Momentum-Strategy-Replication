@@ -1,9 +1,12 @@
 # Data files
-data/stock_data_raw.csv
-data/market_data.csv
+momentum_replication/data/stock_data_raw.csv
+momentum_replication/data/market_data.csv
 
 # WRDS configuration (contains credentials)
-data/config_wrds.py
+momentum_replication/data/config_wrds.py
 
 # Research papers (copyrighted material)
 Jegadeesh_Titman.pdf
+
+# Generated results (can be recreated by running the strategy)
+momentum_replication/results/

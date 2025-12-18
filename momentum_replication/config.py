@@ -5,8 +5,11 @@ Contains all parameters and settings for the analysis.
 
 import pandas as pd
 from datetime import datetime
+import sys
+import os
 
-import config_wrds  # WRDS connection settings
+# Import WRDS config from data folder (now in same directory)
+from data import config_wrds  # WRDS connection settings
 
 # =============================================================================
 # DATA PARAMETERS
@@ -24,11 +27,6 @@ EXTENDED_END_DATE = datetime(1989, 12, 31)
 DATA_SOURCE = "local_csv"  # Options: "wrds", "local_csv"
 WRDS_USERNAME = config_wrds.WRDS_USERNAME  # Set your WRDS username
 WRDS_PASSWORD = config_wrds.WRDS_PASSWORD  # Set your WRDS password (may not be used with Duo)
-
-# Note: If your institution uses Duo authentication:
-# - The password in config_wrds may not be used
-# - You'll be prompted interactively for Duo authentication
-# - Make sure Duo Mobile app is installed and working
 
 # =============================================================================
 # MOMENTUM STRATEGY PARAMETERS
