@@ -136,73 +136,148 @@ def calculate_momentum_scores(returns_matrix: pd.DataFrame,
     
     return momentum_scores
 
-def create_momentum_portfolios(returns_matrix: pd.DataFrame, 
-                             momentum_scores: pd.DataFrame,
-                             n_portfolios: int = 10) -> pd.DataFrame:
+from collections import defaultdict
+import numpy as np
+import pandas as pd
+
+def create_momentum_portfolios(
+    returns_matrix: pd.DataFrame,
+    momentum_scores: pd.DataFrame,
+    stock_data: pd.DataFrame,
+    holding_period: int = 6,
+    n_portfolios: int = 10,
+    value_weighted: bool = True,
+) -> pd.DataFrame:
     """
-    Create winner and loser portfolios for momentum strategy.
-    
-    Parameters:
-    -----------
+    Create winner/loser momentum portfolios with proper K-month overlapping holdings.
+
+    Parameters
+    ----------
     returns_matrix : pd.DataFrame
-        Monthly returns matrix
+        Monthly returns with dates as index and permno as columns.
     momentum_scores : pd.DataFrame
-        Momentum scores for portfolio formation
-        
-    Returns:
-    --------
+        Momentum scores aligned with returns_matrix index/columns.
+    stock_data : pd.DataFrame
+        Long-form stock data containing at least ['date', 'permno', 'market_cap'].
+        (Your DataLoader already creates market_cap.)
+    holding_period : int
+        Holding period K in months.
+    n_portfolios : int
+        Number of portfolios (deciles by default).
+    value_weighted : bool
+        If True, use market cap weights at formation. Otherwise equal-weight.
+
+    Returns
+    -------
     pd.DataFrame
-        Portfolio returns for Winners (P10), Losers (P1), and WML strategy
+        Columns: ['Losers', 'Winners', 'WML'] indexed by date.
     """
-    print("📈 Creating winner and loser momentum portfolios")
-    
-    # Initialize return series
-    winners_returns = pd.Series(index=returns_matrix.index, dtype=float, name='Winners')
-    losers_returns = pd.Series(index=returns_matrix.index, dtype=float, name='Losers')
-    
-    # For each formation date, create winner/loser portfolios
-    for formation_date in momentum_scores.dropna().index:
-        # Get momentum scores for this date
-        current_scores = momentum_scores.loc[formation_date].dropna()
-            
-        # Calculate portfolio cutoffs
-        portfolio_size = len(current_scores) // n_portfolios
-        
-        # Sort stocks by momentum score
-        sorted_stocks = current_scores.sort_values()
-        
-        # Bottom portfolio (Losers - P1)
-        losers = sorted_stocks.iloc[:portfolio_size].index
-        
-        # Top portfolio (Winners - Pn)  
-        winners = sorted_stocks.iloc[-portfolio_size:].index
-        
-        # Calculate next month returns
-        next_month_idx = returns_matrix.index.get_loc(formation_date) + 1
-        
-        if next_month_idx < len(returns_matrix):
-            next_month_date = returns_matrix.index[next_month_idx]
-            
-            # Winner portfolio return
-            winner_rets = returns_matrix.loc[next_month_date, winners]
-            winners_returns[next_month_date] = winner_rets.mean()
-            
-            # Loser portfolio return
-            loser_rets = returns_matrix.loc[next_month_date, losers]
-            losers_returns[next_month_date] = loser_rets.mean()
-    
-    # Create results DataFrame
-    results = pd.DataFrame({
-        'Losers': losers_returns,
-        'Winners': winners_returns
-    })
-    
-    # Add Winner-Loser strategy
-    results['WML'] = results['Winners'] - results['Losers']
-    
-    print(f"✅ Portfolio returns calculated: {results.shape}")
-    
-    return results
+
+    # Ensure datetime index
+    returns_matrix = returns_matrix.copy()
+    returns_matrix.index = pd.to_datetime(returns_matrix.index)
+    momentum_scores = momentum_scores.copy()
+    momentum_scores.index = pd.to_datetime(momentum_scores.index)
+
+    # Build market cap matrix aligned to returns_matrix
+    stock_data = stock_data.copy()
+    stock_data['date'] = pd.to_datetime(stock_data['date'])
+    if 'market_cap' not in stock_data.columns:
+        raise ValueError("stock_data must contain a 'market_cap' column for value-weighting.")
+
+    mcap_matrix = stock_data.pivot_table(
+        index='date',
+        columns='permno',
+        values='market_cap',
+        aggfunc='first'
+    ).reindex(index=returns_matrix.index)
+
+    # For each month, store the list of active vintage returns (overlapping portfolios)
+    winners_vintages = defaultdict(list)  # date -> list of returns from different vintages active that month
+    losers_vintages  = defaultdict(list)
+
+    # Iterate over valid formation dates (where we have cross-sectional scores)
+    formation_dates = momentum_scores.dropna(how='all').index
+    for formation_date in formation_dates:
+        # Need formation_date to exist in returns_matrix index
+        if formation_date not in returns_matrix.index:
+            continue
+
+        scores = momentum_scores.loc[formation_date].dropna()
+        if len(scores) < n_portfolios * 10:  # crude guard; adjust if you want
+            continue
+
+        # Sort into deciles by score
+        sorted_permnos = scores.sort_values()
+        portfolio_size = len(sorted_permnos) // n_portfolios
+        if portfolio_size < 1:
+            continue
+
+        losers = sorted_permnos.iloc[:portfolio_size].index
+        winners = sorted_permnos.iloc[-portfolio_size:].index
+
+        # Formation weights (value-weight or equal-weight)
+        if value_weighted:
+            w_w = mcap_matrix.loc[formation_date, winners]
+            w_l = mcap_matrix.loc[formation_date, losers]
+
+            # If market caps are missing or sum to zero, fall back to equal-weight
+            if w_w.isna().all() or float(w_w.fillna(0).sum()) <= 0:
+                w_w = pd.Series(1.0, index=winners)
+            if w_l.isna().all() or float(w_l.fillna(0).sum()) <= 0:
+                w_l = pd.Series(1.0, index=losers)
+
+            w_w = w_w.fillna(0)
+            w_l = w_l.fillna(0)
+            w_w = w_w / w_w.sum() if w_w.sum() != 0 else pd.Series(1.0 / len(w_w), index=w_w.index)
+            w_l = w_l / w_l.sum() if w_l.sum() != 0 else pd.Series(1.0 / len(w_l), index=w_l.index)
+        else:
+            w_w = pd.Series(1.0 / len(winners), index=winners)
+            w_l = pd.Series(1.0 / len(losers), index=losers)
+
+        # Add this vintage's realized returns for each of the next K months
+        start_pos = returns_matrix.index.get_loc(formation_date)
+        for k in range(1, holding_period + 1):
+            hold_pos = start_pos + k
+            if hold_pos >= len(returns_matrix.index):
+                break
+
+            hold_date = returns_matrix.index[hold_pos]
+
+            r_w = returns_matrix.loc[hold_date, winners]
+            r_l = returns_matrix.loc[hold_date, losers]
+
+            # Require at least some non-missing returns; renormalize weights if needed
+            mask_w = r_w.notna()
+            mask_l = r_l.notna()
+
+            if mask_w.sum() > 0:
+                ww_eff = w_w[mask_w.index].copy()
+                ww_eff = ww_eff[mask_w]
+                ww_eff = ww_eff / ww_eff.sum()
+                winners_vintages[hold_date].append(float((ww_eff * r_w[mask_w]).sum()))
+
+            if mask_l.sum() > 0:
+                wl_eff = w_l[mask_l.index].copy()
+                wl_eff = wl_eff[mask_l]
+                wl_eff = wl_eff / wl_eff.sum()
+                losers_vintages[hold_date].append(float((wl_eff * r_l[mask_l]).sum()))
+
+    # Aggregate overlapping vintages: average across active vintages each month
+    idx = returns_matrix.index
+    winners_series = pd.Series(index=idx, dtype=float, name='Winners')
+    losers_series  = pd.Series(index=idx, dtype=float, name='Losers')
+
+    for d in idx:
+        if d in winners_vintages and len(winners_vintages[d]) > 0:
+            winners_series.loc[d] = float(np.mean(winners_vintages[d]))
+        if d in losers_vintages and len(losers_vintages[d]) > 0:
+            losers_series.loc[d] = float(np.mean(losers_vintages[d]))
+
+    out = pd.DataFrame({'Losers': losers_series, 'Winners': winners_series})
+    out['WML'] = out['Winners'] - out['Losers']
+    return out
+
 
 def calculate_summary_statistics(returns: pd.DataFrame) -> pd.DataFrame:
     """
@@ -236,11 +311,11 @@ def calculate_summary_statistics(returns: pd.DataFrame) -> pd.DataFrame:
         # Add significance asterisks
         t_stat_str = f"{t_stat:.3f}" if not np.isnan(t_stat) else "N/A"
         if not np.isnan(t_stat):
-            if abs(t_stat) > 2.576:  # 1% significance
+            if abs(t_stat) > 2.576:  # 10% significance
                 t_stat_str += "***"
             elif abs(t_stat) > 1.96:  # 5% significance
                 t_stat_str += "**"
-            elif abs(t_stat) > 1.645:  # 10% significance
+            elif abs(t_stat) > 1.645:  # 1% significance
                 t_stat_str += "*"
         
         stats.append({
@@ -302,7 +377,9 @@ def run_momentum_strategy(formation_period: int = 6,
     
     # Step 4: Create momentum portfolios
     print(f"\nSTEP 4: Creating momentum portfolios...")
-    portfolio_returns = create_momentum_portfolios(returns_matrix, momentum_scores, n_portfolios)
+    portfolio_returns = create_momentum_portfolios(returns_matrix, momentum_scores, 
+                                                   stock_data, holding_period,
+                                                    n_portfolios, False)
     
     # Step 5: Summary statistics
     print(f"\nSTEP 5: Computing summary statistics...")
