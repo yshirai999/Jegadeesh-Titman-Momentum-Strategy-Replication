@@ -91,7 +91,7 @@ The WML (Winner-Minus-Loser) strategy should show:
 <!-- BEGIN: MOMENTUM_RESULTS_TABLE -->
 
 | Formation (J) | Holding (K) | Skip=0 Return(%) | Skip=0 Vol(%) | Skip=0 t-stat | Skip=1 Return(%) | Skip=1 Vol(%) | Skip=1 t-stat |
-|---:|---:|---:|---:|---:|---:|---:|---:|
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | J=3 | K=3 | 5.87 | 7.51 | 3.878*** | 6.00 | 7.40 | 4.026*** |
 | J=3 | K=6 | 5.40 | 6.66 | 4.028*** | 5.54 | 6.56 | 4.183*** |
 | J=3 | K=9 | 5.82 | 5.97 | 4.839*** | 5.75 | 5.79 | 4.923*** |
