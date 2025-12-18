@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 import logging
 from pathlib import Path
+import sys
 
 try:
     import wrds
@@ -18,6 +19,8 @@ except ImportError:
     WRDS_AVAILABLE = False
     warnings.warn("WRDS not available. Install with: pip install wrds")
 
+# Import config from parent directory
+sys.path.append(str(Path(__file__).parent.parent))
 import config
 
 # Set up logging
@@ -46,7 +49,8 @@ class DataLoader:
             self._connect_wrds()
         
         # Create data directory if it doesn't exist
-        Path(config.DATA_DIR).mkdir(exist_ok=True)
+        data_dir = Path(__file__).parent
+        data_dir.mkdir(exist_ok=True)
     
 
     
@@ -123,7 +127,7 @@ class DataLoader:
             raise
         
         if save_to_csv and not data.empty:
-            csv_path = Path(config.DATA_DIR) / "stock_data_raw.csv"
+            csv_path = Path(__file__).parent / "stock_data_raw.csv"
             data.to_csv(csv_path, index=False)
             logger.info(f"Saved raw data to {csv_path}")
         
@@ -168,8 +172,6 @@ class DataLoader:
         WHERE m.date BETWEEN '{start_str}' AND '{end_str}'
         AND n.exchcd IN ({exchcd_filter})
         AND n.shrcd IN ({shrcd_filter})
-        AND m.ret IS NOT NULL
-        AND abs(m.prc) >= {config.MIN_PRICE}
         ORDER BY m.permno, m.date
         """
         
@@ -186,7 +188,7 @@ class DataLoader:
     
     def _load_from_csv(self) -> pd.DataFrame:
         """Load data from local CSV file."""
-        csv_path = Path(config.DATA_DIR) / "stock_data_raw.csv"
+        csv_path = Path(__file__).parent / "stock_data_raw.csv"
         
         if not csv_path.exists():
             raise FileNotFoundError(f"CSV file not found: {csv_path}")
@@ -210,7 +212,7 @@ class DataLoader:
         logger.info("Loading market and risk-free rate data")
         
         # First, try to load from local downloaded files
-        market_file = Path(config.DATA_DIR) / "market_data.csv"
+        market_file = Path(__file__).parent / "market_data.csv"
         if market_file.exists():
             logger.info(f"Loading market data from {market_file}")
             market_data = pd.read_csv(market_file)
@@ -265,13 +267,94 @@ class DataLoader:
         
         # Save to CSV if requested
         if save_to_csv:
-            csv_path = Path(config.DATA_DIR) / "market_data.csv"
+            csv_path = Path(__file__).parent / "market_data.csv"
             market_data.to_csv(csv_path, index=False)
             logger.info(f"Saved market data to {csv_path}")
 
         return market_data
 
-    
+    def load_first_week_returns(self,
+                                start_date: datetime = config.START_DATE,
+                                end_date: datetime = config.END_DATE,
+                                save_to_csv: bool = True) -> pd.DataFrame:
+        """
+        Load first-week (first 5 trading days) compounded returns per permno-month from CRSP DSF.
+
+        Returns a DataFrame with columns:
+        ['permno', 'month_start', 'first_week_ret']
+
+        This is intended to support JT Panel B skip = 1 week:
+        R_skip_month = (1 + R_month) / (1 + R_first_week) - 1
+        """
+        logger.info(f"Loading first-week returns from {start_date} to {end_date}")
+
+        if self.data_source == 'wrds':
+            data = self._load_first_week_returns_wrds(start_date, end_date)
+        elif self.data_source == 'local_csv':
+            csv_path = Path(__file__).parent / "first_week_returns.csv"
+            if not csv_path.exists():
+                raise FileNotFoundError(f"First-week returns file not found: {csv_path}")
+            data = pd.read_csv(csv_path)
+            data['month_start'] = pd.to_datetime(data['month_start'])
+        else:
+            raise ValueError(f"Unknown data source: {self.data_source}")
+
+        if save_to_csv and not data.empty:
+            csv_path = Path(__file__).parent / "first_week_returns.csv"
+            data.to_csv(csv_path, index=False)
+            logger.info(f"Saved first-week returns to {csv_path}")
+
+        logger.info(f"Loaded {len(data):,} permno-month first-week returns")
+        return data
+
+    def _load_first_week_returns_wrds(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """Compute first 5 trading-days compounded returns per permno-month using CRSP DSF."""
+        if not self.db:
+            raise ConnectionError("WRDS connection not established")
+
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+
+        # We only need DSF daily returns; compute the first-5-trading-days return per permno-month in SQL.
+        # Handle ret = -1 (100% loss) explicitly to avoid log(0) issues.
+        query = f"""
+        WITH daily AS (
+            SELECT
+                permno,
+                date,
+                ret,
+                date_trunc('month', date)::date AS month_start,
+                row_number() OVER (
+                    PARTITION BY permno, date_trunc('month', date)
+                    ORDER BY date
+                ) AS rn
+            FROM crsp.dsf
+            WHERE date BETWEEN '{start_str}' AND '{end_str}'
+            AND ret IS NOT NULL
+        ),
+        first5 AS (
+            SELECT
+                permno,
+                month_start,
+                CASE
+                    WHEN SUM(CASE WHEN ret <= -1 THEN 1 ELSE 0 END) > 0 THEN -1.0
+                    ELSE EXP(SUM(LN(1.0 + ret))) - 1.0
+                END AS first_week_ret
+            FROM daily
+            WHERE rn <= 5
+            GROUP BY permno, month_start
+        )
+        SELECT permno, month_start, first_week_ret
+        FROM first5
+        ORDER BY permno, month_start
+        """
+
+        logger.info("Executing CRSP DSF first-week aggregation query...")
+        data = self.db.raw_sql(query)
+        data['month_start'] = pd.to_datetime(data['month_start'])
+        return data
+
+
     def test_wrds_connection(self) -> bool:
         """Test if WRDS connection is available (may require Duo authentication)."""
         if not WRDS_AVAILABLE:
@@ -302,7 +385,7 @@ class DataLoader:
 
     def save_data(self, data: pd.DataFrame, filename: str) -> None:
         """Save data to CSV file."""
-        filepath = Path(config.DATA_DIR) / filename
+        filepath = Path(__file__).parent / filename
         data.to_csv(filepath, index=False)
         logger.info(f"Saved data to {filepath}")
     

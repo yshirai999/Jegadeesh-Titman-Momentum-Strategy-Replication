@@ -1,6 +1,7 @@
 # Data files
 momentum_replication/data/stock_data_raw.csv
 momentum_replication/data/market_data.csv
+momentum_replication/data/first_week_returns.csv
 
 # WRDS configuration (contains credentials)
 momentum_replication/data/config_wrds.py
