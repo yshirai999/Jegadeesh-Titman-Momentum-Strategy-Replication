@@ -379,7 +379,7 @@ def run_momentum_strategy(formation_period: int = 6,
     print(f"\nSTEP 4: Creating momentum portfolios...")
     portfolio_returns = create_momentum_portfolios(returns_matrix, momentum_scores, 
                                                    stock_data, holding_period,
-                                                    n_portfolios, False)
+                                                    n_portfolios, True)
     
     # Step 5: Summary statistics
     print(f"\nSTEP 5: Computing summary statistics...")
