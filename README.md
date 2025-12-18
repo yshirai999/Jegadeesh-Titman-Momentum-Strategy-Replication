@@ -49,7 +49,7 @@ python run_strategy.py
 
 After running, results are saved to `results/` folder:
 
-- **Portfolio Returns**: `portfolio_returns_XYZ.csv` 
+- **Portfolio Returns**: `portfolio_returns_XYZ.csv`
 - **Summary Statistics**: `summary_statistics_XYZ.csv`
 
 Where X=formation period, Y=holding period, Z=skip period
