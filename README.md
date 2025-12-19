@@ -113,13 +113,11 @@ The WML (Winner-Minus-Loser) strategy should show:
 
 #### Key Findings
 
-- **All 32 strategies profitable**: WML returns range from 4.90% to 13.82% annually
-- **All highly significant**: Every strategy significant at 10% level (*** indicates p < 0.1)
-- **Formation period impact**: Longer J periods generally produce higher returns (J=12 > J=9 > J=6 > J=3)
-- **Holding period impact**: Longer K periods typically enhance performance within each J group
-- **Skip period benefit**: 1-month skip improves returns in 14 out of 16 cases
-- **Best strategy**: J=12, K=12, Skip=1 achieves 13.82% return with t-statistic of 5.468
-- **Robust effect**: Even weakest strategy (J=3, K=3, Skip=0) delivers 4.90% with t=2.768***
+- **All 32 strategies profitable**: WML returns range from .36% to 1.20% monthly on average
+- **All highly significant**: Every strategy significant at 5% level (** indicates p > 0.05, and * indicates p > 0.01)
+- **Best Results**: J = 9 and K = 3, closely followed by J = 9 and K = 3, very similar to original JT results
+- **Skip period benefit**: 1-month skip improves returns, also in line with JT results
+- **Robust effect**: Even weakest strategy delivery positive returns
 
 ## Requirements
 
