@@ -17,43 +17,44 @@ import numpy as np
 import os
 import sys
 from datetime import datetime
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 from collections import defaultdict
 
 # Add parent directory to path to import config
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import config
 
-def load_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
+from typing import Tuple
+import os
+import pandas as pd
+
+def load_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Load stock and market data from CSV files.
-    
-    Returns:
-    --------
-    Tuple[pd.DataFrame, pd.DataFrame]
-        Stock data and market data
+    Load stock, market, and first-week return data from CSV files.
+    Returns: (stock_data, market_data, first_week_returns)
     """
-    # Get data directory path (go up one level from momentum strategy folder)
     data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-    
-    # Load stock data
+
     stock_file = os.path.join(data_dir, 'stock_data_raw.csv')
+    market_file = os.path.join(data_dir, 'market_data.csv')
+    week_file  = os.path.join(data_dir, 'first_week_returns.csv')
+
     if not os.path.exists(stock_file):
         raise FileNotFoundError(f"Stock data file not found: {stock_file}")
-    
-    stock_data = pd.read_csv(stock_file)
-    
-    # Load market data
-    market_file = os.path.join(data_dir, 'market_data.csv')
     if not os.path.exists(market_file):
         raise FileNotFoundError(f"Market data file not found: {market_file}")
-    
+    if not os.path.exists(week_file):
+        raise FileNotFoundError(f"First-week returns file not found: {week_file}")
+
+    stock_data = pd.read_csv(stock_file)
     market_data = pd.read_csv(market_file)
-    
-    print(f"✅ Loaded stock data: {stock_data.shape}")
-    print(f"✅ Loaded market data: {market_data.shape}")
-    
-    return stock_data, market_data
+    first_week = pd.read_csv(week_file)
+
+    print(f"Loaded stock data: {stock_data.shape}")
+    print(f"Loaded market data: {market_data.shape}")
+    print(f"Loaded first-week returns: {first_week.shape}")
+
+    return stock_data, market_data, first_week
 
 def prepare_returns_data(stock_data: pd.DataFrame) -> pd.DataFrame:
     """
@@ -95,56 +96,34 @@ def prepare_returns_data(stock_data: pd.DataFrame) -> pd.DataFrame:
     
     return returns_matrix
 
-def calculate_momentum_scores(returns_matrix: pd.DataFrame, 
-                            formation_period: int = 6,
-                            skip_period: int = 1) -> pd.DataFrame:
+def calculate_momentum_scores(
+        returns_matrix: pd.DataFrame,
+        formation_period: int = 6
+    ) -> pd.DataFrame:
     """
-    Calculate momentum scores for each stock at each date.
-    
-    Parameters:
-    -----------
-    returns_matrix : pd.DataFrame
-        Monthly returns with dates as index, stocks as columns
-    formation_period : int
-        Number of months to look back for momentum calculation
-    skip_period : int
-        Number of months to skip to avoid microstructure effects
-        
-    Returns:
-    --------
-    pd.DataFrame
-        Momentum scores (cumulative returns over formation period)
+    Momentum score at date t = product_{m=t-J,...,t-1}(1+r_m) - 1
     """
-    print(f"📊 Calculating momentum scores (J={formation_period}, skip={skip_period})")
-    
-    # Calculate cumulative returns over formation period
-    # We need to skip the most recent month to avoid microstructure effects
     momentum_scores = pd.DataFrame(index=returns_matrix.index, columns=returns_matrix.columns)
-    
-    for i in range(formation_period + skip_period, len(returns_matrix)):
+    for i in range(formation_period, len(returns_matrix.index)):
         current_date = returns_matrix.index[i]
-        
-        # Get returns for formation period (skipping the most recent skip_period months)
-        start_idx = i - formation_period - skip_period
-        end_idx = i - skip_period
-        
-        formation_returns = returns_matrix.iloc[start_idx:end_idx]
-        
-        # Calculate cumulative return: (1+r1)*(1+r2)*...*(1+rJ) - 1 and returns NaNs if any month is missing
-        momentum_scores.loc[current_date] = (1 + formation_returns).prod(axis=0, skipna=False) - 1
 
-    
+        start_idx = i - formation_period
+        end_idx = i  # up to t-1
+
+        formation_returns = returns_matrix.iloc[start_idx:end_idx]
+        momentum_scores.loc[current_date] = (1 + formation_returns).prod(axis=0, skipna=False) - 1
     print(f"✅ Momentum scores calculated for {momentum_scores.count().sum()} stock-month observations")
-    
     return momentum_scores
 
 def create_momentum_portfolios(
-        returns_matrix: pd.DataFrame,
-        momentum_scores: pd.DataFrame,
-        stock_data: pd.DataFrame,
-        holding_period: int = 6,
-        n_portfolios: int = 10,
-        value_weighted: bool = True,
+    returns_matrix: pd.DataFrame,
+    momentum_scores: pd.DataFrame,
+    stock_data: pd.DataFrame,
+    holding_period: int = 6,
+    n_portfolios: int = 10,
+    value_weighted: bool = True,
+    skip_week: bool = False,
+    first_week_returns: Optional[pd.DataFrame] = None
     ) -> pd.DataFrame:
 
     returns_matrix = returns_matrix.copy()
@@ -161,6 +140,13 @@ def create_momentum_portfolios(
         values='market_cap',
         aggfunc='first'
     ).reindex(index=returns_matrix.index)
+
+    first_week_matrix = None
+    if first_week_returns is not None:
+        fw = first_week_returns.copy()
+        fw['month_start'] = pd.to_datetime(fw['month_start'])
+        # pivot: index=month_start, columns=permno, values=first_week_ret
+        first_week_matrix = fw.pivot(index='month_start', columns='permno', values='first_week_ret')
 
     # Store cohort-level WML returns
     wml_vintages = defaultdict(list)
@@ -213,6 +199,28 @@ def create_momentum_portfolios(
 
             r_w = returns_matrix.loc[hold_date, winners]
             r_l = returns_matrix.loc[hold_date, losers]
+
+            if skip_week and (k == 1) and (first_week_matrix is not None):
+                month_start = hold_date.to_period('M').to_timestamp(how='start')
+
+                if month_start in first_week_matrix.index:
+                    fw_w = first_week_matrix.loc[month_start, winners]
+                    fw_l = first_week_matrix.loc[month_start, losers]
+
+                    # If first-week ret is missing -> keep monthly.
+                    # If first-week ret <= -1 -> undefined ex-week -> treat as missing.
+                    fw_w = fw_w.where(fw_w > -1, np.nan)
+                    fw_l = fw_l.where(fw_l > -1, np.nan)
+
+                    # R_ex1wk = (1+R_month)/(1+R_1wk) - 1
+                    r_w = pd.Series(
+                        np.where(fw_w.notna(), (1.0 + r_w) / (1.0 + fw_w) - 1.0, r_w),
+                        index=winners
+                    )
+                    r_l = pd.Series(
+                        np.where(fw_l.notna(), (1.0 + r_l) / (1.0 + fw_l) - 1.0, r_l),
+                        index=losers
+                    )
 
             mask_w = r_w.notna()
             mask_l = r_l.notna()
@@ -274,11 +282,11 @@ def calculate_summary_statistics(returns: pd.DataFrame) -> pd.DataFrame:
         # Add significance asterisks
         t_stat_str = f"{t_stat:.3f}" if not np.isnan(t_stat) else "N/A"
         if not np.isnan(t_stat):
-            if abs(t_stat) > 2.576:  # 10% significance
+            if abs(t_stat) > 6.31:  # 10% significance
                 t_stat_str += "***"
-            elif abs(t_stat) > 1.96:  # 5% significance
+            elif abs(t_stat) > 2.23:  # 5% significance
                 t_stat_str += "**"
-            elif abs(t_stat) > 1.645:  # 1% significance
+            elif abs(t_stat) > 1.81:  # 1% significance
                 t_stat_str += "*"
         
         stats.append({
@@ -297,7 +305,7 @@ def calculate_summary_statistics(returns: pd.DataFrame) -> pd.DataFrame:
 def run_momentum_strategy(formation_period: int = 6, 
                          holding_period: int = 6,
                          n_portfolios: int = 10,
-                         skip_period: int = 1) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                         skip_week: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run the complete momentum strategy analysis.
     
@@ -306,7 +314,7 @@ def run_momentum_strategy(formation_period: int = 6,
     formation_period : int
         Months to look back for momentum calculation (J)
     holding_period : int
-        Months to hold portfolio (K) - not implemented yet, using 1 month
+        Months to hold portfolio (K)
     n_portfolios : int
         Number of momentum portfolios
     skip_period : int
@@ -323,12 +331,12 @@ def run_momentum_strategy(formation_period: int = 6,
     print(f"Formation Period (J): {formation_period} months")
     print(f"Holding Period (K): {holding_period} months")
     print(f"Number of Portfolios: {n_portfolios}")
-    print(f"Skip Period: {skip_period} month(s)")
+    print(f"Skip Week: {skip_week}")
     print()
     
     # Step 1: Load data
     print("STEP 1: Loading data...")
-    stock_data, market_data = load_data()
+    stock_data, market_data, first_week = load_data()
     
     # Step 2: Prepare returns matrix
     print("\nSTEP 2: Preparing returns data...")
@@ -336,14 +344,22 @@ def run_momentum_strategy(formation_period: int = 6,
     
     # Step 3: Calculate momentum scores
     print(f"\nSTEP 3: Calculating momentum scores...")
-    momentum_scores = calculate_momentum_scores(returns_matrix, formation_period, skip_period)
+    momentum_scores = calculate_momentum_scores(
+        returns_matrix,
+        formation_period=formation_period)
     
     # Step 4: Create momentum portfolios
     print(f"\nSTEP 4: Creating momentum portfolios...")
-    portfolio_returns = create_momentum_portfolios(returns_matrix, momentum_scores, 
-                                                   stock_data, holding_period,
-                                                    n_portfolios, False)
-    
+    portfolio_returns = create_momentum_portfolios(
+        returns_matrix,
+        momentum_scores,
+        stock_data,
+        holding_period=holding_period,
+        n_portfolios=n_portfolios,
+        value_weighted=False,
+        skip_week=skip_week,                 # JT-style skip approximation
+        first_week_returns=first_week)
+
     # Step 5: Summary statistics
     print(f"\nSTEP 5: Computing summary statistics...")
     summary_stats = calculate_summary_statistics(portfolio_returns)
@@ -364,7 +380,7 @@ def main():
         print("=" * 80)
         print(f"Formation periods: {config.FORMATION_PERIODS}")
         print(f"Holding periods: {config.HOLDING_PERIODS}")
-        print(f"Skip periods: [0, {config.SKIP_PERIOD}]")
+        print(f"Skip week: [{config.SKIP_WEEK}]")
         print(f"Total strategies: {len(config.FORMATION_PERIODS) * len(config.HOLDING_PERIODS) * 2}")
         print(f"Results will be saved to: {results_dir}")
         print("=" * 80)
@@ -374,7 +390,7 @@ def main():
         # Run all combinations
         for formation in config.FORMATION_PERIODS:
             for holding in config.HOLDING_PERIODS:
-                for skip in [0, config.SKIP_PERIOD]:
+                for skip in config.SKIP_WEEK:
                     strategy_count += 1
                     
                     print(f"\n[{strategy_count}/32] Running strategy J={formation}, K={holding}, Skip={skip}")
@@ -385,7 +401,7 @@ def main():
                             formation_period=formation,
                             holding_period=holding,
                             n_portfolios=config.NUM_PORTFOLIOS,
-                            skip_period=skip
+                            skip_week=skip
                         )
                         
                         # Create file names

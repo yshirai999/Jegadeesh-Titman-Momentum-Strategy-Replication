@@ -42,8 +42,8 @@ HOLDING_PERIODS = [3, 6, 9, 12]
 NUM_PORTFOLIOS = 10  # Number of momentum portfolios (deciles)
 PORTFOLIO_WEIGHTING = "equal"  # Options: "equal", "value"
 
-# Skip periods (to avoid microstructure effects)
-SKIP_PERIOD = 1  # Skip 1 month between formation and holding
+# Skip 1 week (to avoid microstructure effects)
+SKIP_WEEK = [False, True]  # Skip 1 week between formation and holding
 
 # =============================================================================
 # EXCHANGE AND SHARE CODE FILTERS (for CRSP data)

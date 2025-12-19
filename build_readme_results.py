@@ -71,25 +71,37 @@ END_MARKER   = "<!-- END: MOMENTUM_RESULTS_TABLE -->"
 # ----------------------------
 def parse_j_k_skip_from_filename(filename: str) -> tuple[int, int, int]:
     """
-    Parse J,K,skip from filename of the form: summary_statistics_{J}{K}{skip}.csv
+    Parse J, K, skip from filename.
 
-    Robust approach: match against known values rather than naive digit splitting.
+    Supports:
+      - summary_statistics_{J}{K}0.csv
+      - summary_statistics_{J}{K}1.csv
+      - summary_statistics_{J}{K}True.csv
+      - summary_statistics_{J}{K}False.csv
     """
-    m = re.match(r"^summary_statistics_(\d+)\.csv$", filename)
+    m = re.match(r"^summary_statistics_(\d+)(True|False|0|1)\.csv$", filename)
     if not m:
         raise ValueError(f"Unexpected filename format: {filename}")
 
-    suffix = m.group(1)
+    jk_part = m.group(1)
+    skip_part = m.group(2)
 
-    # Because J,K are in {3,6,9,12} and skip in {0,1}, suffix could be length 3..5.
-    # We'll match by trying all combinations.
+    # Convert skip flag to int {0,1}
+    if skip_part in ("1", "True"):
+        skip = 1
+    elif skip_part in ("0", "False"):
+        skip = 0
+    else:
+        raise ValueError(f"Invalid skip flag in filename: {filename}")
+
+    # Recover J and K by matching known values
     for j in FORMATION_PERIODS:
         for k in HOLDING_PERIODS:
-            for s in SKIP_PERIODS:
-                if suffix == f"{j}{k}{s}":
-                    return j, k, s
+            if jk_part == f"{j}{k}":
+                return j, k, skip
 
-    raise ValueError(f"Could not parse (J,K,skip) from suffix '{suffix}' in filename '{filename}'")
+    raise ValueError(f"Could not parse (J,K) from filename '{filename}'")
+
 
 
 def read_wml_stats(stats_csv_path: Path) -> dict:
