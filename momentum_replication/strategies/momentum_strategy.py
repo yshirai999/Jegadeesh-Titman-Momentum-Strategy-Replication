@@ -240,7 +240,7 @@ def create_momentum_portfolios(
             wml_vintages[hold_date].append(float(r_w_cohort - r_l_cohort))
 
     # Aggregate overlapping cohorts
-    idx = returns_matrix.index
+    idx = returns_matrix.index #dates of returns matrix
     wml_series = pd.Series(index=idx, dtype=float, name='WML')
 
     for d in idx:

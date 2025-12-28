@@ -2,6 +2,43 @@
 
 A Python implementation replicating the momentum strategy from "Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency" by Narasimhan Jegadeesh and Sheridan Titman (1993).
 
+## Momentum Strategy Construction and Reported Returns
+
+### Winners and Losers Portfolios formation
+
+- At the end of each month, stocks are ranked by their past J-month returns.
+- Stocks are sorted into deciles based on this ranking.
+- The winner portfolio consists of the top decile, and the loser portfolio consists of the bottom decile.
+- Portfolios are equal-weighted within each leg.
+
+### Zero-cost long–short strategy
+
+- Each month, the strategy goes long the winner portfolio and short the loser portfolio with equal dollar exposure on each side.
+- The reported return of a long–short portfolio in a given month is the average return of winners minus the average return of losers.
+- Returns are portfolio returns (not cash P&L); scale is implicitly normalized, consistent with the original paper.
+
+### Holding period and overlapping portfolios
+
+- Portfolios are held for K months.
+- When K > 1, multiple portfolios formed in different months are held simultaneously.
+- The strategy’s monthly return is the simple average of the returns of all active long–short portfolios (overlapping vintages).
+
+### Skip-one-week adjustment
+
+- To match Jegadeesh–Titman’s skip-period convention, the first week of returns is excluded only in the first holding month of each newly formed portfolio.
+- Subsequent holding months use full monthly returns.
+- The momentum signal itself uses uninterrupted past J month returns (no skip at the signal stage).
+
+### Reported results
+
+The results tables (see below) report:
+
+- Mean monthly return of the long–short (WML) strategy,
+- Volatility,
+- t-statistics.
+
+These statistics are computed from the time series of monthly strategy returns described above.
+
 ## Quick Start
 
 ### 1. Environment Setup
