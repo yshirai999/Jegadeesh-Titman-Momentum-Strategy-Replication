@@ -82,15 +82,6 @@ python run_strategy.py
         └── momentum_strategy.py # J&T momentum strategy
 ```
 
-## Results
-
-After running, results are saved to `results/` folder:
-
-- **Portfolio Returns**: `portfolio_returns_XYZ.csv`
-- **Summary Statistics**: `summary_statistics_XYZ.csv`
-
-Where X=formation period, Y=holding period, Z=skip period
-
 ## Configuration
 
 Edit `momentum_replication/config.py` to customize:
@@ -109,7 +100,16 @@ SKIP_PERIOD = 1
 NUM_PORTFOLIOS = 10  # Decile portfolios
 ```
 
-## Expected Results
+## Results
+
+After running, results are saved to `results/` folder:
+
+- **Portfolio Returns**: `portfolio_returns_XYZ.csv`
+- **Summary Statistics**: `summary_statistics_XYZ.csv`
+
+Where X=formation period, Y=holding period, Z=skip period
+
+### Recap of JT Results
 
 The WML (Winner-Minus-Loser) strategy in JT shows:
 
