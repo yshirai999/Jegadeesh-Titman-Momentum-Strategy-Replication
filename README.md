@@ -111,17 +111,16 @@ NUM_PORTFOLIOS = 10  # Decile portfolios
 
 ## Expected Results
 
-The WML (Winner-Minus-Loser) strategy should show:
+The WML (Winner-Minus-Loser) strategy in JT shows:
 
-- **Positive returns** for most formation/holding combinations
-- **Statistical significance** (especially for 6-month strategies)
-- **Annualized returns** typically 8-15% for the original sample period
-- **t-statistics > 1.96** for significant strategies (marked with **)
+- **Positive returns** for all formation/holding combinations
+- **Statistical significance** for all except for K = 3, J = 3 with no 1-week skip
+- **Monthly returns** between 0.73% (K = 3 and J = 3) and 1.49% (K = 3 and J = 12)
 
 ### 🔧 Data Sources
 
 - **WRDS/CRSP**: Academic research standard (requires subscription)
-- **Local CSV**: Custom data import capability
+- data is saved in a local CSV file, which is accessed at portfolio formation
 
 ### Complete Results: All 32 Winner-Minus-Loser (WML) Strategy Combinations
 
